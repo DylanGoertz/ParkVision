@@ -1,0 +1,7 @@
+{
+  "input_video": "data/primary_parking.mp4",
+  "spaces_file": "spaces.json",
+  "output_video": "output/parkvision_output.mp4",
+  "occupied_threshold": 0.18,
+  "display_video": true
+}
