@@ -1,16 +1,4 @@
-"""Evaluate ParkVision predictions against manually verified labels.
-
-Reads results/evaluation_results.csv, calculates accuracy, the confusion
-matrix counts, precision, recall, and F1 (Occupied is the positive class),
-and saves three charts to results/.
-
-If the "correct" column is blank, it is filled in from actual_status and
-predicted_status and written back to the CSV. If it is already filled in,
-every value is checked against the two status columns.
-
-Run from the main ParkVision folder:
-    python src/evaluate.py
-"""
+"""Evaluate ParkVision predictions against manually verified labels."""
 
 import csv
 import sys
