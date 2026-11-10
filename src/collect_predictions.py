@@ -1,22 +1,4 @@
-"""Collect detector predictions at the evaluation sample times.
-
-This script runs the same detection pipeline as main.py (score, temporal
-smoothing, and hysteresis) over every frame of the video, without opening a
-display window. At each sample time it:
-
-  * records the detector's prediction for every space in
-    results/evaluation_results.csv (actual_status is left blank so it can be
-    filled in by visual inspection),
-  * saves an unannotated close-up of the parking row with space numbers to
-    output/labeling/ for manual labeling,
-  * saves the annotated detector frame to output/annotated/.
-
-It also saves the beginning, middle, and end screenshots to
-results/screenshots/.
-
-Run from the main ParkVision folder:
-    python src/collect_predictions.py
-"""
+"""Collect detector predictions at the evaluation sample times. """
 
 import csv
 import json
@@ -35,6 +17,9 @@ SAMPLE_TIMES_SECONDS = [6, 12, 18, 24, 30, 36, 42, 48, 54, 60]
 # These must match the values in main.py.
 SMOOTHING_FACTOR = 0.20
 HYSTERESIS_MARGIN = 0.02
+
+# Frames darker than this (average pixel value) are treated as black.
+BLACK_FRAME_BRIGHTNESS = 10
 
 RESULTS_CSV = Path("results/evaluation_results.csv")
 SCREENSHOT_DIR = Path("results/screenshots")
@@ -66,11 +51,7 @@ def annotate(frame: np.ndarray, results: List, frame_number: int,
 
 
 def save_labeling_image(frame: np.ndarray, spaces: List, path: Path) -> None:
-    """Save a close-up of the parking spaces without predictions.
-
-    Spaces are outlined in yellow (not red/green) so the person labeling
-    the frame judges each space by eye, not by the detector's answer.
-    """
+    """Save a close-up of the parking spaces without predictions."""
     image = frame.copy()
 
     for space_id, polygon in enumerate(spaces, start=1):
@@ -145,6 +126,7 @@ def main() -> None:
     frame_number = 0
     last_frame = None
     last_results = None
+    last_frame_number = 0
 
     while True:
         success, frame = capture.read()
@@ -181,7 +163,10 @@ def main() -> None:
             space_states[space_id] = occupied
             result["occupied"] = occupied
 
-        last_frame, last_results = frame, results
+        
+        if frame.mean() > BLACK_FRAME_BRIGHTNESS:
+            last_frame, last_results = frame, results
+            last_frame_number = frame_number
 
         needs_annotation = (frame_number in sample_frames
                             or frame_number in screenshot_frames)
@@ -214,23 +199,24 @@ def main() -> None:
 
     if last_frame is not None:
         cv2.imwrite(str(SCREENSHOT_DIR / "end.png"),
-                    annotate(last_frame, last_results, frame_number,
+                    annotate(last_frame, last_results, last_frame_number,
                              total_frames))
+        print(f"  End screenshot from frame {last_frame_number}")
 
-    if RESULTS_CSV.exists() and any(
-            row.get("actual_status") for row in csv.DictReader(
-                RESULTS_CSV.open(encoding="utf-8"))):
-        backup = RESULTS_CSV.with_suffix(".backup.csv")
-        RESULTS_CSV.replace(backup)
-        print(f"Existing labeled CSV moved to {backup} so it is not lost.")
-
-    with RESULTS_CSV.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=CSV_COLUMNS)
-        writer.writeheader()
-        writer.writerows(rows)
+    already_labeled = RESULTS_CSV.exists() and any(
+        row.get("actual_status") for row in csv.DictReader(
+            RESULTS_CSV.open(encoding="utf-8")))
 
     print()
-    print(f"Wrote {len(rows)} rows to {RESULTS_CSV}")
+    if already_labeled:
+        # Never overwrite manual labels.
+        print(f"{RESULTS_CSV} already has labels, so it was left unchanged.")
+    else:
+        with RESULTS_CSV.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=CSV_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"Wrote {len(rows)} rows to {RESULTS_CSV}")
     print(f"Labeling images: {LABELING_DIR}/")
     print(f"Screenshots: {SCREENSHOT_DIR}/")
     print("Next: open each labeling image, fill in actual_status, then run "
